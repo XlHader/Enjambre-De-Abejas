@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import {
   MapContainer,
   TileLayer,
@@ -72,8 +72,6 @@ function MapClickHandler({
   return null;
 }
 
-const MAX_ITERATIONS = 100;
-
 export default function Map() {
   const [startPoint, setStartPoint] = useState<[number, number] | null>(null);
   const [isRunning, setIsRunning] = useState(false);
@@ -82,6 +80,10 @@ export default function Map() {
   const [bestDistance, setBestDistance] = useState<number | null>(null);
   const [bestFitness, setBestFitness] = useState<number | null>(null);
   const [finalPath, setFinalPath] = useState<number[]>([]);
+  const [pathCoordinates, setPathCoordinates] = useState<[number, number][]>(
+    []
+  );
+  const [maxIterations, setMaxIterations] = useState<number>(100); // Valor por defecto
 
   const handleLocationSelect = (coords: [number, number]) => {
     setStartPoint(coords);
@@ -91,10 +93,11 @@ export default function Map() {
     setIsRunning(false);
     setColonyState(null);
     setFinalPath([]);
+    setPathCoordinates([]);
   };
 
   const startAlgorithm = () => {
-    if (!startPoint) return;
+    if (!startPoint || maxIterations <= 0) return;
     const initialState = initializeBeeColony(warehouses, startPoint);
     setColonyState(initialState);
     setIsRunning(true);
@@ -107,17 +110,28 @@ export default function Map() {
     setIsRunning(false);
     setColonyState(null);
     setFinalPath([]);
+    setPathCoordinates([]);
   };
 
   useEffect(() => {
     if (!isRunning || !startPoint || !colonyState) return;
 
-    if (iteration >= MAX_ITERATIONS) {
+    if (iteration >= maxIterations) {
       setIsRunning(false);
       // Al finalizar, actualizamos la ruta final si existe una solución
       if (colonyState.bestSolution) {
         setFinalPath(colonyState.bestSolution.path);
         setBestDistance(colonyState.bestSolution.distance);
+
+        // Actualizar la ruta aproximada (líneas rectas)
+        const coordinates = [
+          startPoint,
+          ...colonyState.bestSolution.path.map(
+            (index) => warehouses[index].coordinates
+          ),
+          startPoint,
+        ];
+        setPathCoordinates(coordinates);
       }
       return;
     }
@@ -140,29 +154,47 @@ export default function Map() {
       ) {
         setBestFitness(newState.bestSolution.fitness);
         setBestDistance(newState.bestSolution.distance);
+
+        // Actualizar la ruta aproximada (líneas rectas)
+        const coordinates = [
+          startPoint,
+          ...newState.bestSolution.path.map(
+            (index) => warehouses[index].coordinates
+          ),
+          startPoint,
+        ];
+        setPathCoordinates(coordinates);
       }
 
       // Si la mejora es pequeña durante varias iteraciones, se detiene el algoritmo
-      if (iteration - newState.lastImprovementIteration > 20) {
+      if (iteration - newState.lastImprovementIteration > 50) {
         setIsRunning(false);
         if (newState.bestSolution) {
           setFinalPath(newState.bestSolution.path);
           setBestDistance(newState.bestSolution.distance);
+
+          // Actualizar la ruta aproximada (líneas rectas)
+          const coordinates = [
+            startPoint,
+            ...newState.bestSolution.path.map(
+              (index) => warehouses[index].coordinates
+            ),
+            startPoint,
+          ];
+          setPathCoordinates(coordinates);
         }
       }
     }, 200);
 
     return () => clearTimeout(timeout);
-  }, [isRunning, colonyState, startPoint, iteration, bestFitness]);
-
-  const pathCoordinates =
-    startPoint && finalPath.length > 0
-      ? [
-          startPoint,
-          ...finalPath.map((index) => warehouses[index].coordinates),
-          startPoint,
-        ]
-      : [];
+  }, [
+    isRunning,
+    colonyState,
+    startPoint,
+    iteration,
+    bestFitness,
+    maxIterations,
+  ]);
 
   return (
     <div className="h-screen flex">
@@ -224,6 +256,20 @@ export default function Map() {
           </p>
         ) : (
           <>
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Número de iteraciones:
+              </label>
+              <input
+                type="number"
+                min="1"
+                value={maxIterations}
+                onChange={(e) => setMaxIterations(parseInt(e.target.value, 10))}
+                className="w-full px-3 py-2 border rounded"
+                disabled={isRunning}
+              />
+            </div>
+
             <div className="flex gap-2 mb-4">
               <button
                 onClick={() => {
@@ -260,12 +306,15 @@ export default function Map() {
 
             <div className="space-y-2">
               <p className="font-semibold">
-                Iteración: {iteration}/{MAX_ITERATIONS}
+                Iteración: {iteration}/{maxIterations}
               </p>
-              {bestDistance !== null && (
+              {bestDistance !== null && isFinite(bestDistance) && (
                 <p className="font-semibold">
                   Mejor distancia: {bestDistance.toFixed(2)} km
                 </p>
+              )}
+              {bestDistance !== null && !isFinite(bestDistance) && (
+                <p className="font-semibold">Mejor distancia: No disponible</p>
               )}
               <div className="mt-4">
                 <h3 className="font-semibold mb-2">Leyenda:</h3>

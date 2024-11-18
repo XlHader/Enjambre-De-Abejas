@@ -6,7 +6,7 @@ function calculateDistance(
 ): number {
   const [lat1, lon1] = coord1;
   const [lat2, lon2] = coord2;
-  const R = 6371;
+  const R = 6371; // Radio de la Tierra en km
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
   const dLon = ((lon2 - lon1) * Math.PI) / 180;
   const a =
@@ -24,7 +24,7 @@ function calculateTotalDistance(
   warehouses: Warehouse[],
   startPoint: [number, number]
 ): number {
-  if (path.length === 0) return Infinity;
+  if (path.length === 0) return Number.MAX_SAFE_INTEGER;
 
   let totalDistance = calculateDistance(
     startPoint,
@@ -42,6 +42,12 @@ function calculateTotalDistance(
     warehouses[path[path.length - 1]].coordinates,
     startPoint
   );
+
+  // Validar si la distancia total es finita
+  if (!isFinite(totalDistance)) {
+    totalDistance = Number.MAX_SAFE_INTEGER;
+  }
+
   return totalDistance;
 }
 
@@ -49,11 +55,21 @@ function generateNeighborSolution(path: number[]): number[] {
   const newPath = [...path];
   const idx1 = Math.floor(Math.random() * newPath.length);
   let idx2 = Math.floor(Math.random() * newPath.length);
+  let idx3 = Math.floor(Math.random() * newPath.length);
+
   while (idx1 === idx2) {
     idx2 = Math.floor(Math.random() * newPath.length);
   }
-  // Intercambiar dos ciudades
-  [newPath[idx1], newPath[idx2]] = [newPath[idx2], newPath[idx1]];
+  while (idx3 === idx1 || idx3 === idx2) {
+    idx3 = Math.floor(Math.random() * newPath.length);
+  }
+
+  // Intercambiar tres ciudades
+  [newPath[idx1], newPath[idx2], newPath[idx3]] = [
+    newPath[idx2],
+    newPath[idx3],
+    newPath[idx1],
+  ];
   return newPath;
 }
 
@@ -71,7 +87,7 @@ function generateRandomPositionInArea(
 export function initializeBeeColony(
   warehouses: Warehouse[],
   startPoint: [number, number],
-  populationSize: number = 30
+  populationSize: number = 50 // Incrementar el tamaño de la población
 ): BeeColonyState {
   const employedCount = Math.floor(populationSize * 0.5);
   const onlookerCount = Math.floor(populationSize * 0.3);
@@ -79,36 +95,58 @@ export function initializeBeeColony(
 
   const initialPath = warehouses.map((_, idx) => idx);
 
+  // Calcular los límites del área basada en los almacenes
+  const allCoordinates = warehouses.map((w) => w.coordinates);
+  const lats = allCoordinates.map((coord) => coord[0]);
+  const lngs = allCoordinates.map((coord) => coord[1]);
+  const minLat = Math.min(...lats);
+  const maxLat = Math.max(...lats);
+  const minLng = Math.min(...lngs);
+  const maxLng = Math.max(...lngs);
+
   const employedBees: Bee[] = Array.from({ length: employedCount }, () => {
     const path = shuffleArray(initialPath);
-    const distance = calculateTotalDistance(path, warehouses, startPoint);
+    const totalDistance = calculateTotalDistance(path, warehouses, startPoint);
+    const fitness = 1 / totalDistance;
+    const position = generateRandomPositionInArea(
+      minLat,
+      maxLat,
+      minLng,
+      maxLng
+    );
     return {
       type: "employed",
       path,
-      fitness: 1 / distance,
+      fitness,
       trials: 0,
-      currentPosition: startPoint,
+      currentPosition: position,
       targetIndex: 0,
     };
   });
 
   const onlookerBees: Bee[] = Array.from({ length: onlookerCount }, () => {
+    const position = generateRandomPositionInArea(
+      minLat,
+      maxLat,
+      minLng,
+      maxLng
+    );
     return {
       type: "onlooker",
       path: [],
       fitness: 0,
       trials: 0,
-      currentPosition: startPoint,
+      currentPosition: position,
       targetIndex: 0,
     };
   });
 
   const scoutBees: Bee[] = Array.from({ length: scoutCount }, () => {
     const position = generateRandomPositionInArea(
-      startPoint[0] - 0.05,
-      startPoint[0] + 0.05,
-      startPoint[1] - 0.05,
-      startPoint[1] + 0.05
+      minLat,
+      maxLat,
+      minLng,
+      maxLng
     );
     return {
       type: "scout",
@@ -151,9 +189,10 @@ export function performBeeColonyIteration(
   startPoint: [number, number],
   iteration: number
 ): BeeColonyState {
-  const limit = 20; // Límite de intentos sin mejora
+  const limit = 50; // Incrementar el límite de intentos sin mejora
 
-  const allCoordinates = [startPoint, ...warehouses.map((w) => w.coordinates)];
+  // Calcular los límites del área basada en los almacenes
+  const allCoordinates = warehouses.map((w) => w.coordinates);
   const lats = allCoordinates.map((coord) => coord[0]);
   const lngs = allCoordinates.map((coord) => coord[1]);
   const minLat = Math.min(...lats);
@@ -235,7 +274,7 @@ export function performBeeColonyIteration(
       0.001
     );
 
-    const distanceToWarehouse = calculateDistance(
+    const distanceToWarehouse = calculateEuclideanDistance(
       newPosition,
       nextWarehouse.coordinates
     );
@@ -279,12 +318,20 @@ export function performBeeColonyIteration(
         warehouses,
         startPoint
       );
+      const newFitness = 1 / newDistance;
+      const newPosition = generateRandomPositionInArea(
+        minLat,
+        maxLat,
+        minLng,
+        maxLng
+      );
       return {
         ...bee,
         path: newPath,
-        fitness: 1 / newDistance,
+        fitness: newFitness,
         trials: 0,
         targetIndex: 0,
+        currentPosition: newPosition,
       };
     } else {
       return bee;
@@ -306,7 +353,7 @@ export function performBeeColonyIteration(
       0.001
     );
 
-    const distanceToWarehouse = calculateDistance(
+    const distanceToWarehouse = calculateEuclideanDistance(
       newPosition,
       nextWarehouse.coordinates
     );
@@ -375,4 +422,15 @@ function moveTowards(
   const newLon = lon1 + deltaLon * ratio;
 
   return [newLat, newLon];
+}
+
+function calculateEuclideanDistance(
+  coord1: [number, number],
+  coord2: [number, number]
+): number {
+  const [lat1, lon1] = coord1;
+  const [lat2, lon2] = coord2;
+  const deltaLat = lat2 - lat1;
+  const deltaLon = lon2 - lon1;
+  return Math.sqrt(deltaLat * deltaLat + deltaLon * deltaLon);
 }
