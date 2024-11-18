@@ -114,6 +114,10 @@ export default function Map() {
   };
 
   useEffect(() => {
+    resetAlgorithm();
+  }, [maxIterations]);
+
+  useEffect(() => {
     if (!isRunning || !startPoint || !colonyState) return;
 
     if (iteration >= maxIterations) {
@@ -264,7 +268,9 @@ export default function Map() {
                 type="number"
                 min="1"
                 value={maxIterations}
-                onChange={(e) => setMaxIterations(parseInt(e.target.value, 10))}
+                onChange={(e) =>
+                  setMaxIterations(parseInt(e.target.value, 10) || 1)
+                }
                 className="w-full px-3 py-2 border rounded"
                 disabled={isRunning}
               />
