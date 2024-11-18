@@ -31,8 +31,8 @@ Sigue estos pasos para ejecutar el proyecto localmente:
 1. **Clona el repositorio**:
 
    ```bash
-   git clone pendiente
-   cd pendiente
+   git clone https://github.com/XlHader/Enjambre-De-Abejas.git
+   cd Enjambre-De-Abejas
    ```
 
 2. **Instala las dependencias**:
